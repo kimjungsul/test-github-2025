@@ -14,10 +14,12 @@
   // 간단 데모용 HLS 스트림 (테스트용 공개 샘플)
   const DEMO_STREAM = "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8";
 
-  function makeCard({ title, img, desc }) {
+  function makeCard({ id, mediaType, title, img, desc }) {
     const a = document.createElement("a");
     a.className = "card";
     a.href = "javascript:void(0)";
+    a.dataset.id = id;
+    a.dataset.mediaType = mediaType;
     a.dataset.title = title;
     a.dataset.img = img;
     a.dataset.desc = desc;
@@ -25,7 +27,7 @@
     image.src = img;
     image.alt = `${title} 포스터`;
     a.appendChild(image);
-    a.addEventListener("click", () => openModal(a.dataset));
+    a.addEventListener("click", () => openModal({ id, mediaType, title, img, desc }));
     return a;
   }
 
@@ -64,7 +66,8 @@
         const title = item.title || item.name || "제목 미상";
         const desc = item.overview || "상세 설명이 준비되어 있지 않습니다.";
         const img = `${IMG_BASE}${item.poster_path}`;
-        track.appendChild(makeCard({ title, img, desc }));
+        const mediaType = row.key === 'movie' ? 'movie' : 'tv';
+        track.appendChild(makeCard({ id: item.id, mediaType, title, img, desc }));
       });
     } catch (e) {
       console.error("Row load failed:", row.key, e);
@@ -116,12 +119,13 @@
   document.getElementById("infoHero")?.addEventListener("click", () => {
     const cur = heroItems[heroIndex];
     if (cur) {
-      openModal({ title: cur.title, img: cur.poster || cur.backdrop, desc: cur.desc });
+      openModal({ id: cur.id, mediaType: cur.mediaType, title: cur.title, img: cur.poster || cur.backdrop, desc: cur.desc, streamUrl: cur.streamUrl });
     } else {
       openModal({
         title: "지금 가장 핫한 선택",
         img: "https://picsum.photos/seed/hero123/400/600",
-        desc: "히어로 섹션의 샘플 상세 정보입니다."
+        desc: "히어로 섹션의 샘플 상세 정보입니다.",
+        streamUrl: DEMO_STREAM
       });
     }
   });
@@ -133,13 +137,22 @@
   const modalDesc = document.getElementById("modalDesc");
   const modalMeta = document.getElementById("modalMeta");
 
-  function openModal({ title, img, desc }) {
+  function openModal({ id, mediaType, title, img, desc, streamUrl }) {
     modalPoster.src = img;
     modalTitle.textContent = title;
     modalDesc.textContent = desc || "상세 설명이 준비되어 있지 않습니다.";
     modalMeta.textContent = "2025 • 13+ • 2시간 10분";
+    if (streamUrl) modal.dataset.streamUrl = streamUrl; else delete modal.dataset.streamUrl;
+    if (id) modal.dataset.id = id; else delete modal.dataset.id;
+    if (mediaType) modal.dataset.mediaType = mediaType; else delete modal.dataset.mediaType;
     modal.setAttribute("aria-hidden", "false");
     document.body.style.overflow = "hidden";
+    // 트레일러 비동기 조회 (가능 시)
+    if (id && mediaType) {
+      fetchTrailer({ id, mediaType }).then(url => {
+        if (url) modal.dataset.streamUrl = url;
+      }).catch(() => {});
+    }
   }
 
   function closeModal() {
@@ -152,18 +165,37 @@
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape") closeModal();
   });
+  // 모달 내 재생 버튼 → 비디오 플레이어 열기
+  const modalPlayBtn = modal.querySelector('.modal-actions .btn.primary');
+  modalPlayBtn?.addEventListener('click', () => {
+    const url = modal.dataset.streamUrl || DEMO_STREAM;
+    const title = modalTitle.textContent || '재생';
+    openPlayer(url, title);
+  });
 
   // Player
   const playerModal = document.getElementById("playerModal");
   const videoEl = document.getElementById("videoPlayer");
+  const ytIframe = document.getElementById("ytPlayer");
   function openPlayer(streamUrl, title) {
     // 비디오 초기화
+    const isHls = /\.m3u8($|\?)/i.test(streamUrl);
+    const isYouTube = /youtube\.com|youtu\.be/i.test(streamUrl);
+    // reset
     if (videoEl) {
+      videoEl.style.display = 'none';
+      try { videoEl.pause(); } catch {}
+      if (videoEl._hls) { videoEl._hls.destroy(); videoEl._hls = null; }
+      videoEl.removeAttribute('src');
+      videoEl.load();
+    }
+    if (ytIframe) {
+      ytIframe.style.display = 'none';
+      ytIframe.src = '';
+    }
+
+    if (isHls) {
       if (window.Hls && window.Hls.isSupported()) {
-        if (videoEl._hls) {
-          videoEl._hls.destroy();
-          videoEl._hls = null;
-        }
         const hls = new window.Hls();
         hls.loadSource(streamUrl);
         hls.attachMedia(videoEl);
@@ -171,10 +203,18 @@
       } else if (videoEl.canPlayType('application/vnd.apple.mpegURL')) {
         videoEl.src = streamUrl;
       } else {
-        // HLS 미지원 브라우저
         alert('이 브라우저는 HLS 재생을 지원하지 않습니다.');
         return;
       }
+      videoEl.style.display = 'block';
+      videoEl.play().catch(() => {});
+    } else if (isYouTube) {
+      ytIframe.src = streamUrl;
+      ytIframe.style.display = 'block';
+    } else {
+      // 알 수 없는 URL -> HLS로 시도하거나 실패 시 안내
+      videoEl.style.display = 'block';
+      videoEl.src = streamUrl;
       videoEl.play().catch(() => {});
     }
     playerModal.setAttribute('aria-hidden', 'false');
@@ -189,6 +229,7 @@
       videoEl.removeAttribute('src');
       videoEl.load();
     }
+    if (ytIframe) { ytIframe.src = ''; }
   }
   playerModal.querySelector('.modal-backdrop').addEventListener('click', closePlayer);
   playerModal.querySelector('.modal-close').addEventListener('click', closePlayer);
@@ -201,18 +242,42 @@
       `${API_BASE}/discover/tv?${common}&with_genres=10764&sort_by=popularity.desc`
     ];
     const [movie, drama, variety] = await Promise.all(urls.map(fetchJson));
-    const toItem = (it) => ({
+    const toItem = (it, mediaType) => ({
+      id: it.id,
+      mediaType,
       title: it.title || it.name || "제목 미상",
       desc: it.overview || "상세 설명이 준비되어 있지 않습니다.",
       poster: it.poster_path ? `${IMG_BASE}${it.poster_path}` : "",
       backdrop: it.backdrop_path ? `${IMG_BACKDROP_BASE}${it.backdrop_path}` : "",
       popularity: typeof it.popularity === "number" ? it.popularity : 0
     });
-    const merged = [...(movie.results||[]), ...(drama.results||[]), ...(variety.results||[])]
-      .map(toItem)
+    const merged = [
+        ...(movie.results||[]).map(x => toItem(x, 'movie')),
+        ...(drama.results||[]).map(x => toItem(x, 'tv')),
+        ...(variety.results||[]).map(x => toItem(x, 'tv'))
+      ]
       .filter(x => x.backdrop || x.poster);
     merged.sort((a, b) => b.popularity - a.popularity);
     return merged.slice(0, 5);
+  }
+
+  async function fetchTrailer({ id, mediaType }) {
+    try {
+      const common = `language=ko-KR&api_key=${API_KEY}`;
+      const url = mediaType === 'movie'
+        ? `${API_BASE}/movie/${id}/videos?${common}`
+        : `${API_BASE}/tv/${id}/videos?${common}`;
+      const data = await fetchJson(url);
+      const vids = data.results || [];
+      const pick = vids.find(v => v.site === 'YouTube' && v.type === 'Trailer' && v.official)
+                || vids.find(v => v.site === 'YouTube' && (v.type === 'Trailer' || v.type === 'Teaser'))
+                || vids.find(v => v.site === 'YouTube');
+      if (!pick || !pick.key) return null;
+      return `https://www.youtube.com/embed/${pick.key}?autoplay=1&rel=0&modestbranding=1`;
+    } catch (e) {
+      console.warn('fetchTrailer failed', id, mediaType, e);
+      return null;
+    }
   }
 
   // Initialize

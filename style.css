@@ -112,7 +112,8 @@ body {
 }
 .modal-panel.video { width: min(1100px, 96%); background: #000; }
 .video-body { padding: 0; }
-.video-body video { width: 100%; height: auto; display: block; background: #000; aspect-ratio: 16/9; }
+.video-body video { width: 100%; height: auto; display: none; background: #000; aspect-ratio: 16/9; }
+.video-body iframe { width: 100%; height: auto; display: none; background: #000; aspect-ratio: 16/9; }
 .modal-close {
   position: absolute; right: 10px; top: 8px; z-index: 11;
   width: 36px; height: 36px; border-radius: 50%; border: 0; cursor: pointer; background: rgba(255,255,255,0.12); color: #fff; font-size: 20px;
