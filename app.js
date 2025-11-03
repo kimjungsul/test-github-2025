@@ -90,6 +90,7 @@
   const heroSection = document.querySelector(".hero");
   const heroTitleEl = document.querySelector(".hero-title");
   const heroDescEl = document.querySelector(".hero-desc");
+  const heroPlayBtn = document.getElementById("playHero");
   let heroItems = [];
   let heroIndex = 0;
 
@@ -100,6 +101,7 @@
     if (bg) heroSection.style.setProperty("--hero", `url('${bg}')`);
     if (heroTitleEl) heroTitleEl.textContent = item.title || "지금 가장 핫한 선택";
     if (heroDescEl) heroDescEl.textContent = item.desc || "지금 바로 재생하거나, 상세 정보를 확인해 보세요.";
+    if (heroPlayBtn) heroPlayBtn.disabled = !Boolean(item.streamUrl);
   }
 
   function startHeroRolling() {
@@ -113,8 +115,8 @@
 
   document.getElementById("playHero")?.addEventListener("click", () => {
     const cur = heroItems[heroIndex];
-    const url = cur?.streamUrl || DEMO_STREAM;
-    openPlayer(url, cur?.title || "재생");
+    if (!cur?.streamUrl) return; // 트레일러 없으면 비활성
+    openPlayer(cur.streamUrl, cur.title || "재생");
   });
   document.getElementById("infoHero")?.addEventListener("click", () => {
     const cur = heroItems[heroIndex];
@@ -147,10 +149,13 @@
     if (mediaType) modal.dataset.mediaType = mediaType; else delete modal.dataset.mediaType;
     modal.setAttribute("aria-hidden", "false");
     document.body.style.overflow = "hidden";
+    updateModalPlayButton();
     // 트레일러 비동기 조회 (가능 시)
     if (id && mediaType) {
       fetchTrailer({ id, mediaType }).then(url => {
         if (url) modal.dataset.streamUrl = url;
+        else delete modal.dataset.streamUrl;
+        updateModalPlayButton();
       }).catch(() => {});
     }
   }
@@ -167,10 +172,15 @@
   });
   // 모달 내 재생 버튼 → 비디오 플레이어 열기
   const modalPlayBtn = modal.querySelector('.modal-actions .btn.primary');
+  function updateModalPlayButton() {
+    if (!modalPlayBtn) return;
+    const hasUrl = Boolean(modal.dataset.streamUrl);
+    modalPlayBtn.disabled = !hasUrl;
+  }
   modalPlayBtn?.addEventListener('click', () => {
-    const url = modal.dataset.streamUrl || DEMO_STREAM;
+    if (!modal.dataset.streamUrl) return;
     const title = modalTitle.textContent || '재생';
-    openPlayer(url, title);
+    openPlayer(modal.dataset.streamUrl, title);
   });
 
   // Player
@@ -258,17 +268,29 @@
       ]
       .filter(x => x.backdrop || x.poster);
     merged.sort((a, b) => b.popularity - a.popularity);
-    return merged.slice(0, 5);
+    const top5 = merged.slice(0, 5);
+    // 각 항목의 트레일러를 미리 조회해 streamUrl 세팅 (언어 무관)
+    const withTrailers = await Promise.all(top5.map(async (it) => {
+      const url = await fetchTrailer({ id: it.id, mediaType: it.mediaType });
+      return { ...it, streamUrl: url || null };
+    }));
+    return withTrailers;
   }
 
   async function fetchTrailer({ id, mediaType }) {
     try {
-      const common = `language=ko-KR&api_key=${API_KEY}`;
-      const url = mediaType === 'movie'
-        ? `${API_BASE}/movie/${id}/videos?${common}`
-        : `${API_BASE}/tv/${id}/videos?${common}`;
-      const data = await fetchJson(url);
-      const vids = data.results || [];
+      // 언어 우선순위: ko-KR → en-US → 언어 미지정
+      const makeUrl = (lang) => mediaType === 'movie'
+        ? `${API_BASE}/movie/${id}/videos?api_key=${API_KEY}${lang ? `&language=${lang}` : ''}`
+        : `${API_BASE}/tv/${id}/videos?api_key=${API_KEY}${lang ? `&language=${lang}` : ''}`;
+      const [ko, en, any] = await Promise.allSettled([
+        fetchJson(makeUrl('ko-KR')),
+        fetchJson(makeUrl('en-US')),
+        fetchJson(makeUrl(''))
+      ]);
+      const vids = [ko, en, any]
+        .map(r => r.status === 'fulfilled' ? (r.value.results || []) : [])
+        .flat();
       const pick = vids.find(v => v.site === 'YouTube' && v.type === 'Trailer' && v.official)
                 || vids.find(v => v.site === 'YouTube' && (v.type === 'Trailer' || v.type === 'Teaser'))
                 || vids.find(v => v.site === 'YouTube');

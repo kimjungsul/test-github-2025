@@ -71,6 +71,7 @@ body {
 .btn.primary:hover { filter: brightness(0.9); }
 .btn.secondary { background: rgba(255,255,255,0.2); color: #fff; }
 .btn.secondary:hover { background: rgba(255,255,255,0.3); }
+.btn:disabled, .btn[disabled] { opacity: .5; cursor: not-allowed; pointer-events: none; }
 
 /* Rows / Slider */
 .row { margin-top: 18px; }
