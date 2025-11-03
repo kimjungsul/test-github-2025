@@ -11,6 +11,9 @@
   const IMG_BASE = "https://image.tmdb.org/t/p/w500";
   const IMG_BACKDROP_BASE = "https://image.tmdb.org/t/p/w1280";
 
+  // 간단 데모용 HLS 스트림 (테스트용 공개 샘플)
+  const DEMO_STREAM = "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8";
+
   function makeCard({ title, img, desc }) {
     const a = document.createElement("a");
     a.className = "card";
@@ -107,11 +110,8 @@
 
   document.getElementById("playHero")?.addEventListener("click", () => {
     const cur = heroItems[heroIndex];
-    if (cur) {
-      openModal({ title: cur.title, img: cur.poster || cur.backdrop, desc: cur.desc });
-    } else {
-      alert("재생을 시작합니다.");
-    }
+    const url = cur?.streamUrl || DEMO_STREAM;
+    openPlayer(url, cur?.title || "재생");
   });
   document.getElementById("infoHero")?.addEventListener("click", () => {
     const cur = heroItems[heroIndex];
@@ -152,6 +152,46 @@
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape") closeModal();
   });
+
+  // Player
+  const playerModal = document.getElementById("playerModal");
+  const videoEl = document.getElementById("videoPlayer");
+  function openPlayer(streamUrl, title) {
+    // 비디오 초기화
+    if (videoEl) {
+      if (window.Hls && window.Hls.isSupported()) {
+        if (videoEl._hls) {
+          videoEl._hls.destroy();
+          videoEl._hls = null;
+        }
+        const hls = new window.Hls();
+        hls.loadSource(streamUrl);
+        hls.attachMedia(videoEl);
+        videoEl._hls = hls;
+      } else if (videoEl.canPlayType('application/vnd.apple.mpegURL')) {
+        videoEl.src = streamUrl;
+      } else {
+        // HLS 미지원 브라우저
+        alert('이 브라우저는 HLS 재생을 지원하지 않습니다.');
+        return;
+      }
+      videoEl.play().catch(() => {});
+    }
+    playerModal.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+  }
+  function closePlayer() {
+    playerModal.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+    if (videoEl) {
+      try { videoEl.pause(); } catch {}
+      if (videoEl._hls) { videoEl._hls.destroy(); videoEl._hls = null; }
+      videoEl.removeAttribute('src');
+      videoEl.load();
+    }
+  }
+  playerModal.querySelector('.modal-backdrop').addEventListener('click', closePlayer);
+  playerModal.querySelector('.modal-close').addEventListener('click', closePlayer);
 
   async function fetchHeroItems() {
     const common = `language=ko-KR&page=1&api_key=${API_KEY}`;

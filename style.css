@@ -110,6 +110,9 @@ body {
   position: relative; z-index: 10; margin: 10vh auto 0; width: min(900px, 92%);
   background: var(--panel); border-radius: 10px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);
 }
+.modal-panel.video { width: min(1100px, 96%); background: #000; }
+.video-body { padding: 0; }
+.video-body video { width: 100%; height: auto; display: block; background: #000; aspect-ratio: 16/9; }
 .modal-close {
   position: absolute; right: 10px; top: 8px; z-index: 11;
   width: 36px; height: 36px; border-radius: 50%; border: 0; cursor: pointer; background: rgba(255,255,255,0.12); color: #fff; font-size: 20px;
