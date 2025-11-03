@@ -103,9 +103,9 @@ body {
 .slider:hover .arrow { display: flex; }
 
 /* Modal */
-.modal { position: fixed; inset: 0; display: none; }
+.modal { position: fixed; inset: 0; display: none; z-index: 1000; }
 .modal[aria-hidden="false"] { display: block; }
-.modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.6); }
+.modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.6); z-index: 0; }
 .modal-panel {
   position: relative; z-index: 10; margin: 10vh auto 0; width: min(900px, 92%);
   background: var(--panel); border-radius: 10px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);
