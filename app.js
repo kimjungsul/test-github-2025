@@ -9,6 +9,7 @@
   const API_KEY = "39b11f015fa7eb68f574c4365c18a486";
   const API_BASE = "https://api.themoviedb.org/3";
   const IMG_BASE = "https://image.tmdb.org/t/p/w500";
+  const IMG_BACKDROP_BASE = "https://image.tmdb.org/t/p/w1280";
 
   function makeCard({ title, img, desc }) {
     const a = document.createElement("a");
@@ -80,13 +81,49 @@
   }
 
   // Hero buttons
-  document.getElementById("playHero")?.addEventListener("click", () => alert("재생을 시작합니다."));
+  const heroSection = document.querySelector(".hero");
+  const heroTitleEl = document.querySelector(".hero-title");
+  const heroDescEl = document.querySelector(".hero-desc");
+  let heroItems = [];
+  let heroIndex = 0;
+
+  function renderHero(index) {
+    if (!heroItems.length) return;
+    const item = heroItems[index];
+    const bg = item.backdrop || item.poster;
+    if (bg) heroSection.style.setProperty("--hero", `url('${bg}')`);
+    if (heroTitleEl) heroTitleEl.textContent = item.title || "지금 가장 핫한 선택";
+    if (heroDescEl) heroDescEl.textContent = item.desc || "지금 바로 재생하거나, 상세 정보를 확인해 보세요.";
+  }
+
+  function startHeroRolling() {
+    renderHero(0);
+    setInterval(() => {
+      if (!heroItems.length) return;
+      heroIndex = (heroIndex + 1) % heroItems.length;
+      renderHero(heroIndex);
+    }, 5000);
+  }
+
+  document.getElementById("playHero")?.addEventListener("click", () => {
+    const cur = heroItems[heroIndex];
+    if (cur) {
+      openModal({ title: cur.title, img: cur.poster || cur.backdrop, desc: cur.desc });
+    } else {
+      alert("재생을 시작합니다.");
+    }
+  });
   document.getElementById("infoHero")?.addEventListener("click", () => {
-    openModal({
-      title: "지금 가장 핫한 선택",
-      img: "https://picsum.photos/seed/hero123/400/600",
-      desc: "히어로 섹션의 샘플 상세 정보입니다."
-    });
+    const cur = heroItems[heroIndex];
+    if (cur) {
+      openModal({ title: cur.title, img: cur.poster || cur.backdrop, desc: cur.desc });
+    } else {
+      openModal({
+        title: "지금 가장 핫한 선택",
+        img: "https://picsum.photos/seed/hero123/400/600",
+        desc: "히어로 섹션의 샘플 상세 정보입니다."
+      });
+    }
   });
 
   // Modal
@@ -116,9 +153,35 @@
     if (e.key === "Escape") closeModal();
   });
 
+  async function fetchHeroItems() {
+    const common = `language=ko-KR&page=1&api_key=${API_KEY}`;
+    const urls = [
+      `${API_BASE}/movie/popular?${common}`,
+      `${API_BASE}/discover/tv?${common}&with_genres=18&sort_by=popularity.desc`,
+      `${API_BASE}/discover/tv?${common}&with_genres=10764&sort_by=popularity.desc`
+    ];
+    const [movie, drama, variety] = await Promise.all(urls.map(fetchJson));
+    const toItem = (it) => ({
+      title: it.title || it.name || "제목 미상",
+      desc: it.overview || "상세 설명이 준비되어 있지 않습니다.",
+      poster: it.poster_path ? `${IMG_BASE}${it.poster_path}` : "",
+      backdrop: it.backdrop_path ? `${IMG_BACKDROP_BASE}${it.backdrop_path}` : "",
+      popularity: typeof it.popularity === "number" ? it.popularity : 0
+    });
+    const merged = [...(movie.results||[]), ...(drama.results||[]), ...(variety.results||[])]
+      .map(toItem)
+      .filter(x => x.backdrop || x.poster);
+    merged.sort((a, b) => b.popularity - a.popularity);
+    return merged.slice(0, 5);
+  }
+
   // Initialize
-  await Promise.all(rows.map(loadRow));
-  console.log("Moov UI initialized with TMDb");
+  [heroItems] = await Promise.all([
+    fetchHeroItems(),
+    Promise.all(rows.map(loadRow))
+  ]);
+  startHeroRolling();
+  console.log("Moov UI initialized with TMDb + hero rolling");
 })();
 
 
